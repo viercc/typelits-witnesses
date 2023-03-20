@@ -1,6 +1,6 @@
 cabal-version:  3.0
 name:           typelits-witnesses
-version:        0.4.0.0
+version:        99.0.0.0
 synopsis:       Existential witnesses, singletons, and classes for operations on GHC TypeLits
 description:    This library contains:
                 .
