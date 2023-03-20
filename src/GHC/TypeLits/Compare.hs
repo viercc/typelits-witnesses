@@ -1,12 +1,11 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeInType          #-}
 {-# LANGUAGE TypeOperators       #-}
-
 -- |
 -- Module      : GHC.TypeLits.Compare
 -- Copyright   : (c) Justin Le 2016
@@ -75,6 +74,7 @@
 -- This module is useful for helping bridge between libraries that use
 -- different 'Nat'-based comparison systems in their type constraints.
 module GHC.TypeLits.Compare
+  {-# DEPRECATED "Use Data.Type.Ord in base >= 4.16" #-}
   ( -- * '<=' and '<=?'
     (:<=?)(..)
   , (%<=?)

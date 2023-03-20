@@ -1,14 +1,15 @@
 {-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE NoStarIsType              #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE PatternSynonyms           #-}
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE StandaloneDeriving        #-}
-{-# LANGUAGE NoStarIsType              #-}
-{-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE ViewPatterns              #-}
 
@@ -84,12 +85,15 @@
 -- not just 'Natural' and 'String'.
 module GHC.TypeLits.Witnesses (
   -- * Nats
-    SNat(..)
+    SNat()
+  , pattern SNat
+  , pattern Zero
+  , pattern Succ
   , SomeNat(SomeNat_)
   , Natural(FromSNat)
   , fromSNat
   , withKnownNat
-  , withSomeNat
+  , withSomeSNat
   , toSomeNat
   -- ** Operations
   , (%+)
@@ -99,11 +103,7 @@ module GHC.TypeLits.Witnesses (
   , (%*)
   , (%^)
   -- ** Compare
-  , (%<=?)
   , sCmpNat
-  -- ** Unsafe
-  , unsafeLiftNatOp1
-  , unsafeLiftNatOp2
   -- * Symbols
   , SSymbol(..)
   , SomeSymbol(SomeSymbol_)
@@ -121,47 +121,10 @@ import           Data.Type.Equality
 import           GHC.Natural
 import           GHC.TypeLits ( KnownSymbol, SomeSymbol(..)
                               , symbolVal, someSymbolVal, sameSymbol )
-import           GHC.TypeLits.Compare hiding ((%<=?))
-import           GHC.TypeNats ( KnownNat, SomeNat(..), CmpNat
-                              , type (+), type (-), type (*), type (^)
-                              , natVal, someNatVal, sameNat )
+import           GHC.TypeNats.Compat
 import           Unsafe.Coerce
-import qualified GHC.TypeLits.Compare        as Comp
 
--- | An @'SNat' n@ is a witness for @'KnownNat' n@.
---
--- This means that if you pattern match on the 'SNat' constructor, in that
--- branch you will have a @'KnownNat' n@ constraint.
---
--- @
--- myFunc :: SNat n -> Bool
--- myFunc SNat = ...  -- in this body, we have `KnownNat n`
--- @
---
--- This is essentially a singleton for 'Nat', and stands in for the
--- /singletons/ 'SNat' and 'Data.Singleton.Sing' types.
-data SNat n = KnownNat n => SNat
-
-deriving instance Eq (SNat n)
-deriving instance Ord (SNat n)
-
-instance Show (SNat n) where
-    showsPrec d x@SNat = showParen (d > 10) $
-      showString "SNat @" . showsPrec 11 (fromSNat x)
-
-instance GShow SNat where
-    gshowsPrec = showsPrec
-
-instance TestEquality SNat where
-    testEquality (SNat :: SNat n) (SNat :: SNat m) =
-      flip fmap (sameNat (Proxy :: Proxy n) (Proxy :: Proxy m)) $ \case
-        Refl -> Refl
-
-instance GEq SNat where
-    geq = testEquality
-
-instance GCompare SNat where
-    gcompare x = cmpNatGOrdering . sCmpNat x
+import           GHC.TypeLits.Witnesses.Unsafe
 
 data SomeNat__ = forall n. SomeNat__ (SNat n)
 
@@ -192,26 +155,10 @@ pattern SomeNat_ x <- ((\case SomeNat (Proxy :: Proxy n) -> SomeNat__ (SNat :: S
 --
 -- This stands in for the /singletons/ 'Data.Singleton.FromSing' pattern synonym.
 pattern FromSNat :: SNat n -> Natural
-pattern FromSNat x <- ((\i -> withSomeNat i SomeNat_) -> SomeNat_ x)
+pattern FromSNat x <- ((\i -> withSomeSNat i SomeNat_) -> SomeNat_ x)
   where
     FromSNat = fromSNat
 {-# COMPLETE FromSNat #-}
-
--- | Given an @'SNat' n@ and a value that would require a @'KnownNat' n@
--- instance, create that value.
---
--- This stands in for the function of the same name from
--- "Data.Singletons.TypeLits".
-withKnownNat :: SNat n -> (KnownNat n => r) -> r
-withKnownNat SNat x = x
-
--- | Promote ("reify") a 'Natural' to an @'SNat' n@, by providing
--- a continuation that would handle it in a way that is polymorphic over
--- all possible @n@.
---
--- This stands in the /singletons/ 'Data.Singleton.withSomeSing' function.
-withSomeNat :: Natural -> (forall n. SNat n -> r) -> r
-withSomeNat (someNatVal->SomeNat (Proxy :: Proxy n)) x = x (SNat :: SNat n)
 
 -- | Promote ("reify") a 'Natural' to an @'SNat' n@ existentially hidden
 -- inside a 'SomeNat'.  To use it, pattern match using 'SomeNat_'.
@@ -219,51 +166,6 @@ withSomeNat (someNatVal->SomeNat (Proxy :: Proxy n)) x = x (SNat :: SNat n)
 -- This stands in the /singletons/ 'Data.Singleton.toSomeSing' function.
 toSomeNat :: Natural -> SomeNat
 toSomeNat = someNatVal
-
--- | Convert ("reflect") an 'SNat' back into the 'Natural' it represents.
---
--- This stands in the /singletons/ 'Data.Singleton.fromSing' function.
-fromSNat :: SNat n -> Natural
-fromSNat x@SNat = natVal x
-
--- | Lift a unary operation to act on an @'SNat' n@ that returns an @'SNat'
--- m@.  The function given must properly describe the relationship between
--- @n@ and @m@.
---
--- For example:
---
--- @
--- double :: SNat n -> SNat (n * 2)
--- double = unsafeLiftNatOp1 (*2)
--- @
---
--- The correctness of the relationship is not checked, so be aware that
--- this can cause programs to break.
-unsafeLiftNatOp1
-    :: (Natural -> Natural)
-    -> SNat n
-    -> SNat m
-unsafeLiftNatOp1 f x = withSomeNat (f (fromSNat x)) unsafeCoerce
-
--- | Lift a binary operation to act on an @'SNat' n@ and @'SNat' m@ that
--- returns an @'SNat' o@.  The function given must properly describe the
--- relationship between @n@, @m@, and @o@.
---
--- For example:
---
--- @
--- multiply :: SNat n -> SNat m -> SNat (n * m)
--- multiply = unsafeLiftNatOp2 (*)
--- @
---
--- The correctness of the relationship is not checked, so be aware that
--- this can cause programs to break.
-unsafeLiftNatOp2
-    :: (Natural -> Natural -> Natural)
-    -> SNat n
-    -> SNat m
-    -> SNat o
-unsafeLiftNatOp2 f x y = withSomeNat (f (fromSNat x) (fromSNat y)) unsafeCoerce
 
 -- | Addition of 'SNat's.
 --
@@ -296,11 +198,42 @@ minusSNat
     -> Either (CmpNat n m :~: 'LT) (SNat (n - m))
 minusSNat (fromSNat->x) (fromSNat->y) = case minusNaturalMaybe x y of
     Nothing -> Left (unsafeCoerce Refl)
-    Just z  -> withSomeNat z (Right . unsafeCoerce)
+    Just z  -> withSomeSNat z (Right . unsafeCoerce)
 
 -- | A version of 'minusSNat' that just returns a 'Maybe'.
 minusSNat_ :: SNat n -> SNat m -> Maybe (SNat (n - m))
 minusSNat_ x = either (const Nothing) Just . minusSNat x
+
+-- | A view of 'SNat' as if it is defined inductively.
+data SNatView n where
+  ViewZero :: SNatView 0
+  ViewSucc :: SNat n -> SNatView (n + 1)
+
+-- | Perform case analysis on 'SNat'.
+viewSNat :: SNat n -> SNatView n
+viewSNat n = case minusSNat_ n (SNat :: SNat 1) of
+  Nothing -> unsafeCoerce $ ViewZero
+  Just n' -> unsafeCoerce $ ViewSucc n'
+
+-- | Pattern synonym 'Zero' and 'Succ' treats @SNat@ as if
+--   it was inductively defined type.
+--
+--   @
+--   -- Virtual definition of SNat
+--   data SNat n where
+--      Zero :: SNat 0
+--      Succ :: SNat n -> SNat (n + 1)
+pattern Zero :: () => (n ~ 0) => SNat n
+pattern Zero <- (viewSNat -> ViewZero)
+  where
+    Zero = (SNat :: SNat 0)
+
+pattern Succ :: () => (n ~ m + 1) => SNat m -> SNat n
+pattern Succ m <- (viewSNat -> ViewSucc m)
+  where
+    Succ m = m %+ (SNat :: SNat 1)
+
+{-# COMPLETE Zero, Succ #-}
 
 -- | Multiplication of 'SNat's.
 --
@@ -321,16 +254,6 @@ minusSNat_ x = either (const Nothing) Just . minusSNat x
 -- "Data.Singletons.TypeLits".
 (%^) :: SNat n -> SNat m -> SNat (n ^ m)
 (%^) = unsafeLiftNatOp2 (^)
-
--- | Compare @n@ and @m@, categorizing them into one of the constructors of
--- ':<=?'.
-(%<=?) :: SNat n -> SNat m -> n :<=? m
-x@SNat %<=? y@SNat = x Comp.%<=? y
-
--- | Compare @n@ and @m@, categorizing them into one of the constructors of
--- 'SCmpNat'.
-sCmpNat :: SNat n -> SNat m -> SCmpNat n m
-sCmpNat x@SNat y@SNat = GHC.TypeLits.Compare.cmpNat x y
 
 -- | An @'SSymbol' n@ is a witness for @'KnownSymbol' n@.
 --
