@@ -37,7 +37,6 @@ module GHC.TypeNats.Compat(
   , Div, Mod, Log2
 ) where
 
-import GHC.Exts (TYPE)
 import GHC.TypeNats (
     Natural
   , Nat
@@ -57,6 +56,8 @@ import Data.GADT.Show
 import Data.GADT.Compare
 
 #if !MIN_VERSION_base(4,18,0)
+
+import GHC.Exts (TYPE)
 
 -- | An @'SNat' n@ is a witness for @'KnownNat' n@.
 --
@@ -101,27 +102,7 @@ withKnownNat SNat r = r
 
 #else
 
-import qualified GHC.TypeNats as Base
-
-type SNat = Base.SNat
-
-pattern SNat :: () => (KnownNat n) => SNat n
-pattern SNat = Base.SNat
-
-{-# COMPLETE SNat #-}
-
-natSing :: KnownNat n => SNat n
-natSing = Base.natSing
-
-fromSNat :: SNat n -> Natural
-fromSNat = Base.fromSNat
-
-withSomeSNat :: forall rep (r :: TYPE rep).
-                Natural -> (forall n. SNat n -> r) -> r
-withSomeSNat = Base.withSomeSNat
-
-withKnownNat :: SNat n -> (KnownNat n => r) -> r
-withKnownNat = Base.withKnownNat
+import GHC.TypeNats(SNat, pattern SNat, natSing, fromSNat, withSomeSNat, withKnownNat)
 
 #endif
 
@@ -132,7 +113,7 @@ instance GEq SNat where
     geq = testEquality
 
 sCmpNat :: SNat n -> SNat m -> OrderingI n m
-sCmpNat n@SNat m@SNat = cmpNat n m
+sCmpNat n m = withKnownNat n (withKnownNat m (cmpNat n m))
 
 instance GCompare SNat where
     gcompare x y = case sCmpNat x y of

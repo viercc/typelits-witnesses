@@ -12,6 +12,7 @@
 {-# LANGUAGE StandaloneDeriving        #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE ViewPatterns              #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- |
 -- Module      : GHC.TypeLits.Witnesses
@@ -128,6 +129,12 @@ import           GHC.TypeLits.Witnesses.Unsafe
 
 data SomeNat__ = forall n. SomeNat__ (SNat n)
 
+someNatToSomeNat__ :: SomeNat -> SomeNat__
+someNatToSomeNat__ (SomeNat @n Proxy) = SomeNat__ @n SNat
+
+proxyOfType :: forall k proxy (a :: k). proxy a -> Proxy a
+proxyOfType _ = Proxy
+
 -- | A useful pattern synonym for matching on a 'SomeNat' as if it
 -- contained an @'SNat' n@, and not a @'Proxy' n@ as it exists in
 -- "GHC.TypeLits".
@@ -137,9 +144,9 @@ data SomeNat__ = forall n. SomeNat__ (SNat n)
 --
 -- This stands in for the /singletons/ 'Data.Singleton.SomeSing' constructor.
 pattern SomeNat_ :: SNat n -> SomeNat
-pattern SomeNat_ x <- ((\case SomeNat (Proxy :: Proxy n) -> SomeNat__ (SNat :: SNat n)) -> SomeNat__ x)
+pattern SomeNat_ x <- (someNatToSomeNat__ -> SomeNat__ x)
   where
-    SomeNat_ (SNat :: SNat n) = SomeNat (Proxy :: Proxy n)
+    SomeNat_ sn = withKnownNat sn (SomeNat (proxyOfType sn))
 {-# COMPLETE SomeNat_ #-}
 
 -- | A useful pattern synonym for matching on a 'Natural' as if it "were"
