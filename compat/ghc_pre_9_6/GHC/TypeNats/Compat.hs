@@ -54,8 +54,6 @@ import Data.Type.Ord
 import Data.GADT.Show
 import Data.GADT.Compare
 
-#if !MIN_VERSION_base(4,18,0)
-
 import GHC.Exts (TYPE)
 
 -- | An @'SNat' n@ is a witness for @'KnownNat' n@.
@@ -110,12 +108,6 @@ instance GCompare SNat where
       LTI -> GLT
       EQI -> GEQ
       GTI -> GGT
-
-#else
-
-import GHC.TypeNats(SNat, pattern SNat, natSing, fromSNat, withSomeSNat, withKnownNat)
-
-#endif
 
 sCmpNat :: SNat n -> SNat m -> OrderingI n m
 sCmpNat n m = withKnownNat n (withKnownNat m (cmpNat n m))
