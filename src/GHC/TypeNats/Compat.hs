@@ -100,23 +100,23 @@ withSomeSNat n body = case someNatVal n of
 withKnownNat :: SNat n -> (KnownNat n => r) -> r
 withKnownNat SNat r = r
 
-#else
-
-import GHC.TypeNats(SNat, pattern SNat, natSing, fromSNat, withSomeSNat, withKnownNat)
-
-#endif
-
 instance GShow SNat where
     gshowsPrec = showsPrec
 
 instance GEq SNat where
     geq = testEquality
 
-sCmpNat :: SNat n -> SNat m -> OrderingI n m
-sCmpNat n m = withKnownNat n (withKnownNat m (cmpNat n m))
-
 instance GCompare SNat where
     gcompare x y = case sCmpNat x y of
       LTI -> GLT
       EQI -> GEQ
       GTI -> GGT
+
+#else
+
+import GHC.TypeNats(SNat, pattern SNat, natSing, fromSNat, withSomeSNat, withKnownNat)
+
+#endif
+
+sCmpNat :: SNat n -> SNat m -> OrderingI n m
+sCmpNat n m = withKnownNat n (withKnownNat m (cmpNat n m))
